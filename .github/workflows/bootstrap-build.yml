@@ -1,5 +1,3 @@
-# للرفع من الهاتف دون رفع مجلدات: ارفع ملف HERO-BACKUP-ANDROID16.zip إلى جذر المستودع،
-# وأنشئ هذا الملف في المسار .github/workflows/bootstrap-build.yml عبر «Create new file» في GitHub.
 name: Build HERO BACKUP from ZIP
 
 on:
@@ -13,27 +11,51 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - name: Unzip project
-        run: unzip -q HERO-BACKUP-ANDROID16.zip -d _proj
+
+      - name: Locate project (zip or extracted)
+        run: |
+          echo "== files in repo =="
+          find . -path ./.git -prune -o -type f -print | head -50
+          if [ -f settings.gradle.kts ]; then
+            PROJ="."
+          else
+            ZIP=$(find . -path ./.git -prune -o -iname '*.zip' -print | head -1)
+            if [ -n "$ZIP" ]; then
+              echo "Using zip: $ZIP"
+              unzip -q "$ZIP" -d _proj
+            fi
+            SETTINGS=$(find . -path ./.git -prune -o -name settings.gradle.kts -print | head -1)
+            if [ -z "$SETTINGS" ]; then
+              echo "ERROR: no zip and no settings.gradle.kts found. Upload HERO-BACKUP-ANDROID16.zip to the repo root."
+              exit 1
+            fi
+            PROJ=$(dirname "$SETTINGS")
+          fi
+          echo "PROJ=$PROJ" >> "$GITHUB_ENV"
+          echo "Project dir: $PROJ"
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
+
       - name: Run unit tests
-        working-directory: _proj/HERO-BACKUP
+        working-directory: ${{ env.PROJ }}
         continue-on-error: true
         env:
           LC_ALL: C.UTF-8
         run: gradle :app:testDebugUnitTest --stacktrace
+
       - name: Build debug APK
-        working-directory: _proj/HERO-BACKUP
+        working-directory: ${{ env.PROJ }}
         run: gradle :app:assembleDebug --stacktrace
+
       - uses: actions/upload-artifact@v4
         with:
           name: HERO-BACKUP-APK
-          path: _proj/HERO-BACKUP/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.PROJ }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          
