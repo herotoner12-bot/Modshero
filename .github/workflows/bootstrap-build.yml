@@ -1,0 +1,39 @@
+# للرفع من الهاتف دون رفع مجلدات: ارفع ملف HERO-BACKUP-ANDROID16.zip إلى جذر المستودع،
+# وأنشئ هذا الملف في المسار .github/workflows/bootstrap-build.yml عبر «Create new file» في GitHub.
+name: Build HERO BACKUP from ZIP
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unzip project
+        run: unzip -q HERO-BACKUP-ANDROID16.zip -d _proj
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Run unit tests
+        working-directory: _proj/HERO-BACKUP
+        continue-on-error: true
+        env:
+          LC_ALL: C.UTF-8
+        run: gradle :app:testDebugUnitTest --stacktrace
+      - name: Build debug APK
+        working-directory: _proj/HERO-BACKUP
+        run: gradle :app:assembleDebug --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HERO-BACKUP-APK
+          path: _proj/HERO-BACKUP/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          
