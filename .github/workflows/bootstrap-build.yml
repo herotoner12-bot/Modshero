@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -19,14 +19,15 @@ jobs:
           if [ -f settings.gradle.kts ]; then
             PROJ="."
           else
-            ZIP=$(find . -path ./.git -prune -o -iname '*.zip' -print | head -1)
+            ZIP=$(find . -path ./.git -prune -o -iname 'HERO-BACKUP*.zip' -print | head -1)
+            [ -z "$ZIP" ] && ZIP=$(find . -path ./.git -prune -o -iname '*.zip' -print | head -1)
             if [ -n "$ZIP" ]; then
               echo "Using zip: $ZIP"
               unzip -q "$ZIP" -d _proj
             fi
             SETTINGS=$(find . -path ./.git -prune -o -name settings.gradle.kts -print | head -1)
             if [ -z "$SETTINGS" ]; then
-              echo "ERROR: no zip and no settings.gradle.kts found. Upload HERO-BACKUP-ANDROID16.zip to the repo root."
+              echo "ERROR: no project found. Upload HERO-BACKUP-ANDROID16.zip to the repo root."
               exit 1
             fi
             PROJ=$(dirname "$SETTINGS")
@@ -54,8 +55,14 @@ jobs:
         working-directory: ${{ env.PROJ }}
         run: gradle :app:assembleDebug --stacktrace
 
+      - name: Name APK HERO-BACKUP-2.0.apk
+        working-directory: ${{ env.PROJ }}
+        run: cp app/build/outputs/apk/debug/app-debug.apk HERO-BACKUP-2.0.apk
+
       - uses: actions/upload-artifact@v4
         with:
           name: HERO-BACKUP-APK
-          path: ${{ env.PROJ }}/app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            ${{ env.PROJ }}/HERO-BACKUP-2.0.apk
+            ${{ env.PROJ }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
