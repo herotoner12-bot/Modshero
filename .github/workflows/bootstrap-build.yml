@@ -55,14 +55,15 @@ jobs:
         working-directory: ${{ env.PROJ }}
         run: gradle :app:assembleDebug --stacktrace
 
-      - name: Name APK HERO-BACKUP-3.0.1.apk
+      - name: Name APK HERO-BACKUP-3.0.2.apk
         working-directory: ${{ env.PROJ }}
-        run: cp app/build/outputs/apk/debug/app-debug.apk HERO-BACKUP-3.0.1.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk HERO-BACKUP-3.0.2.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: HERO-BACKUP-APK
           path: |
-            ${{ env.PROJ }}/HERO-BACKUP-3.0.1.apk
+            ${{ env.PROJ }}/HERO-BACKUP-3.0.2.apk
             ${{ env.PROJ }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          
