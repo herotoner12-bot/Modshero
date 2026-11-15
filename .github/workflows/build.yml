@@ -14,25 +14,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Locate project (works for extracted files or an uploaded ZIP, even nested in a folder)
+      - name: Locate the HERO MODS project (extracted files, or the right ZIP among any in the repo)
         id: loc
+        shell: bash
         run: |
-          P=$(find . -name settings.gradle.kts -not -path "./.git/*" | head -n1 || true)
+          MARK="app/src/main/java/com/heromods/app/MainActivity.kt"
+          P=""
+          # 1) extracted project files
+          while IFS= read -r f; do
+            d=$(dirname "$f")
+            if [ -f "$d/$MARK" ]; then P="$f"; break; fi
+          done < <(find . -name settings.gradle.kts -not -path "./.git/*")
+          # 2) a ZIP that contains the HERO MODS project (other projects' ZIPs are ignored)
           if [ -z "$P" ]; then
-            Z=$(find . -iname "*.zip" -not -path "./.git/*" | head -n1 || true)
-            if [ -z "$Z" ]; then
-              echo "No settings.gradle.kts and no ZIP file found in the repository. Files:"
-              find . -not -path "./.git/*" | head -n 80
-              exit 1
-            fi
-            echo "Unpacking $Z"
-            mkdir -p _proj
-            unzip -o "$Z" -d _proj
-            P=$(find _proj -name settings.gradle.kts | head -n1 || true)
+            while IFS= read -r z; do
+              if unzip -l "$z" 2>/dev/null | grep -q "com/heromods/app/MainActivity.kt"; then
+                echo "Unpacking $z"
+                rm -rf _proj
+                mkdir -p _proj
+                unzip -o -q "$z" -d _proj
+                P=$(find _proj -name settings.gradle.kts | head -n1)
+                break
+              fi
+            done < <(find . -iname "*.zip" -not -path "./.git/*" -not -path "./_proj/*")
           fi
           if [ -z "$P" ]; then
-            echo "settings.gradle.kts was not found. Files:"
-            find . -not -path "./.git/*" | head -n 80
+            echo "ERROR: HERO MODS project not found (looking for com/heromods/app/MainActivity.kt)."
+            echo "Upload HeroMods.zip to the repository root. ZIP files currently in the repo:"
+            find . -iname "*.zip" -not -path "./.git/*"
             exit 1
           fi
           D=$(dirname "$P")
