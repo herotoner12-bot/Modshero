@@ -14,13 +14,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Unpack project if it was uploaded as a ZIP
+      - name: Locate project (works for extracted files or an uploaded ZIP, even nested in a folder)
+        id: loc
         run: |
-          if [ ! -f settings.gradle.kts ]; then
-            Z=$(ls *.zip 2>/dev/null | head -n1)
-            if [ -z "$Z" ]; then echo "No project or ZIP found in repo"; exit 1; fi
-            unzip -o "$Z" -x ".github/*"
+          P=$(find . -name settings.gradle.kts -not -path "./.git/*" | head -n1 || true)
+          if [ -z "$P" ]; then
+            Z=$(find . -iname "*.zip" -not -path "./.git/*" | head -n1 || true)
+            if [ -z "$Z" ]; then
+              echo "No settings.gradle.kts and no ZIP file found in the repository. Files:"
+              find . -not -path "./.git/*" | head -n 80
+              exit 1
+            fi
+            echo "Unpacking $Z"
+            mkdir -p _proj
+            unzip -o "$Z" -d _proj
+            P=$(find _proj -name settings.gradle.kts | head -n1 || true)
           fi
+          if [ -z "$P" ]; then
+            echo "settings.gradle.kts was not found. Files:"
+            find . -not -path "./.git/*" | head -n 80
+            exit 1
+          fi
+          D=$(dirname "$P")
+          echo "Project directory: $D"
+          echo "dir=$D" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-java@v4
         with:
@@ -32,12 +49,13 @@ jobs:
           gradle-version: "8.11.1"
 
       - name: Build signed release APK
+        working-directory: ${{ steps.loc.outputs.dir }}
         run: gradle --no-daemon assembleRelease
 
       - name: Collect APK
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/release/app-release.apk out/HERO-MODS.apk
+          cp "${{ steps.loc.outputs.dir }}/app/build/outputs/apk/release/app-release.apk" out/HERO-MODS.apk
 
       - uses: actions/upload-artifact@v4
         with:
@@ -50,4 +68,3 @@ jobs:
         run: |
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest out/HERO-MODS.apk --title "HERO MODS" --notes "Build ${{ github.run_number }}"
-          
