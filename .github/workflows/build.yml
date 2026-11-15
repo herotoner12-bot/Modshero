@@ -18,7 +18,10 @@ jobs:
         id: loc
         shell: bash
         run: |
-          MARK="app/src/main/java/com/heromods/app/MainActivity.kt"
+          echo "=== WORKFLOW v3 ==="
+          echo "Files in repo (depth 3):"
+          find . -maxdepth 3 -not -path "./.git/*" | sort | head -n 60
+          MARK="HEROMODS_PROJECT_MARKER.txt"
           P=""
           # 1) extracted project files
           while IFS= read -r f; do
@@ -28,7 +31,8 @@ jobs:
           # 2) a ZIP that contains the HERO MODS project (other projects' ZIPs are ignored)
           if [ -z "$P" ]; then
             while IFS= read -r z; do
-              if unzip -l "$z" 2>/dev/null | grep -q "com/heromods/app/MainActivity.kt"; then
+              echo "Checking ZIP: $z"
+              if unzip -l "$z" 2>/dev/null | grep -q "HEROMODS_PROJECT_MARKER.txt"; then
                 echo "Unpacking $z"
                 rm -rf _proj
                 mkdir -p _proj
@@ -39,8 +43,8 @@ jobs:
             done < <(find . -iname "*.zip" -not -path "./.git/*" -not -path "./_proj/*")
           fi
           if [ -z "$P" ]; then
-            echo "ERROR: HERO MODS project not found (looking for com/heromods/app/MainActivity.kt)."
-            echo "Upload HeroMods.zip to the repository root. ZIP files currently in the repo:"
+            echo "ERROR: HERO MODS project not found (looking for HEROMODS_PROJECT_MARKER.txt)."
+            echo "Upload the LATEST HeroMods.zip (v1.3.0) to the repository root. ZIP files currently in the repo:"
             find . -iname "*.zip" -not -path "./.git/*"
             exit 1
           fi
@@ -56,6 +60,50 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
+
+      - name: Prepare signing key (from repository secrets, or create a new one)
+        id: key
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          SECRET_KS_PASS: ${{ secrets.KS_PASS }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          KS="$RUNNER_TEMP/keys/hero-mods.jks"
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$SECRET_KS_PASS" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$KS"
+            PASS="$SECRET_KS_PASS"
+            echo "new=false" >> "$GITHUB_OUTPUT"
+            echo "Using the signing key stored in repository secrets."
+          else
+            PASS=$(openssl rand -hex 16)
+            echo "::add-mask::$PASS"
+            keytool -genkeypair -keystore "$KS" -alias heromods -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$PASS" -keypass "$PASS" -dname "CN=HERO MODS, O=HERO MODS, C=SA" >/dev/null 2>&1
+            mkdir -p keygen-out
+            base64 -w0 "$KS" > keygen-out/KEYSTORE_BASE64.txt
+            printf '%s' "$PASS" > keygen-out/KS_PASS.txt
+            echo "new=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "## NEW SIGNING KEY CREATED"
+              echo "Download the artifact **SAVE-signing-key** from this run, then add two repository secrets"
+              echo "(Settings > Secrets and variables > Actions): **KEYSTORE_BASE64** and **KS_PASS**,"
+              echo "using the contents of the two .txt files. Then delete the artifact."
+              echo "Until you do, every build will use a DIFFERENT key and updates will not install over each other."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "::add-mask::$PASS"
+          echo "KEYSTORE_PATH=$KS" >> "$GITHUB_ENV"
+          echo "KS_PASS=$PASS" >> "$GITHUB_ENV"
+          echo "KS_ALIAS=heromods" >> "$GITHUB_ENV"
+
+      - name: Save the new signing key (private artifact, keep it secret)
+        if: steps.key.outputs.new == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: SAVE-signing-key
+          path: keygen-out/
+          retention-days: 3
 
       - name: Build signed release APK
         working-directory: ${{ steps.loc.outputs.dir }}
