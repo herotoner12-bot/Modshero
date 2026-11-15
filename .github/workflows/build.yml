@@ -1,0 +1,53 @@
+name: Build HERO MODS APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack project if it was uploaded as a ZIP
+        run: |
+          if [ ! -f settings.gradle.kts ]; then
+            Z=$(ls *.zip 2>/dev/null | head -n1)
+            if [ -z "$Z" ]; then echo "No project or ZIP found in repo"; exit 1; fi
+            unzip -o "$Z" -x ".github/*"
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Build signed release APK
+        run: gradle --no-daemon assembleRelease
+
+      - name: Collect APK
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/release/app-release.apk out/HERO-MODS.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HERO-MODS-apk
+          path: out/HERO-MODS.apk
+
+      - name: Publish as GitHub Release (direct APK download)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest out/HERO-MODS.apk --title "HERO MODS" --notes "Build ${{ github.run_number }}"
+          
